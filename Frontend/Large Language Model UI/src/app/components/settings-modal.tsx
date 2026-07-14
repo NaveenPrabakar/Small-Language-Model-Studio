@@ -1,6 +1,16 @@
-import { X } from "lucide-react";
+import { useState } from "react";
+import { Blocks, Bot, Cpu, Network, X } from "lucide-react";
 
 import type { ApiAgent, ApiMcpServer, ApiModel, ApiSkill } from "../lib/api";
+
+type SettingsTab = "models" | "mcp" | "agents" | "skills";
+
+interface TabDef {
+  id: SettingsTab;
+  label: string;
+  icon: typeof Cpu;
+  count: number;
+}
 
 export function SettingsModal({
   open,
@@ -79,7 +89,16 @@ export function SettingsModal({
   onAddSkill: () => void;
   onDeleteSkill: (skillId: string) => void;
 }) {
+  const [activeTab, setActiveTab] = useState<SettingsTab>("models");
+
   if (!open) return null;
+
+  const tabs: TabDef[] = [
+    { id: "models", label: "Models", icon: Cpu, count: models.length },
+    { id: "mcp", label: "MCP servers", icon: Network, count: mcpServers.length },
+    { id: "agents", label: "Agents", icon: Bot, count: agents.length },
+    { id: "skills", label: "Skills", icon: Blocks, count: skills.length },
+  ];
 
   return (
     <div
@@ -87,280 +106,301 @@ export function SettingsModal({
       onClick={onClose}
     >
       <div
-        className="w-full max-w-3xl rounded-2xl border border-border bg-card shadow-2xl shadow-black/60 max-h-[85vh] overflow-y-auto"
+        className="flex w-full max-w-4xl h-[min(85vh,44rem)] rounded-2xl border border-border bg-card shadow-2xl shadow-black/60 overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
-          <div>
+        {/* Left rail */}
+        <div className="w-48 shrink-0 border-r border-border bg-background/40 flex flex-col">
+          <div className="px-4 py-4 border-b border-border">
             <h2 className="text-sm font-semibold text-foreground">Settings</h2>
-            <p className="text-[11px] text-muted-foreground mt-1">Manage models and MCP servers.</p>
           </div>
-          <button
-            onClick={onClose}
-            className="text-muted-foreground hover:text-foreground transition-colors p-1 rounded-md hover:bg-secondary"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-
-        <div className="grid gap-4 p-5 md:grid-cols-2">
-          <section className="space-y-3 rounded-xl border border-border bg-background/40 p-4">
-            <div>
-              <h3 className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-                Pull model
-              </h3>
-              <p className="text-[11px] text-muted-foreground mt-1">
-                Enter any Ollama model name, then pull it into the local library.
-              </p>
-            </div>
-            <div className="space-y-2">
-              <input
-                value={pullModelName}
-                onChange={(e) => setPullModelName(e.target.value)}
-                placeholder="llama3.2:3b"
-                className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground outline-none focus:border-primary/40"
-              />
-              <button
-                onClick={onPullModel}
-                disabled={pullingModel || !pullModelName.trim()}
-                className="w-full rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                {pullingModel ? "Pulling..." : "Pull model"}
-              </button>
-              {pullStatus && <p className="text-[11px] text-muted-foreground leading-relaxed">{pullStatus}</p>}
-            </div>
-
-            <div className="space-y-2 pt-2">
-              <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
-                Available models
-              </p>
-              <div className="space-y-2">
-                {models.map((model) => (
-                  <button
-                    key={model.id}
-                    onClick={() => onSelectModel(model.id)}
-                    className={`w-full rounded-lg border px-3 py-2 text-left transition-colors ${
-                      model.id === selectedModelId ? "bg-primary/10 border-primary/20" : "border-border bg-card hover:bg-secondary"
+          <nav className="flex-1 p-2 space-y-1">
+            {tabs.map((tab) => {
+              const Icon = tab.icon;
+              const isActive = tab.id === activeTab;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
+                    isActive
+                      ? "bg-primary/15 text-primary border border-primary/20"
+                      : "text-muted-foreground hover:text-foreground hover:bg-secondary border border-transparent"
+                  }`}
+                >
+                  <Icon className="w-3.5 h-3.5 shrink-0" />
+                  <span className="flex-1 text-left">{tab.label}</span>
+                  <span
+                    className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${
+                      isActive ? "bg-primary/20 text-primary" : "bg-muted text-muted-foreground"
                     }`}
                   >
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <p className="text-xs font-medium text-foreground">{model.name}</p>
-                        <p className="text-[10px] text-muted-foreground mt-0.5">{model.id}</p>
-                      </div>
-                      <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded font-mono">
-                        {model.badge}
-                      </span>
-                    </div>
-                  </button>
-                ))}
-              </div>
+                    {tab.count}
+                  </span>
+                </button>
+              );
+            })}
+          </nav>
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 flex flex-col min-w-0">
+          <div className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
+            <div>
+              <h3 className="text-sm font-semibold text-foreground">
+                {tabs.find((t) => t.id === activeTab)?.label}
+              </h3>
+              <p className="text-[11px] text-muted-foreground mt-1">
+                {activeTab === "models" && "Pull new local models and choose which one is active."}
+                {activeTab === "mcp" && "Register remote MCP servers so tools can be discovered and called."}
+                {activeTab === "agents" && "Reusable system prompts, invoked with /agent name."}
+                {activeTab === "skills" && "Reusable instructions, invoked with /skill name."}
+              </p>
             </div>
-          </section>
+            <button
+              onClick={onClose}
+              className="text-muted-foreground hover:text-foreground transition-colors p-1 rounded-md hover:bg-secondary shrink-0"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
 
-          <div className="space-y-4">
-            <section className="space-y-3 rounded-xl border border-border bg-background/40 p-4">
-              <div>
-                <h3 className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-                  MCP servers
-                </h3>
-                <p className="text-[11px] text-muted-foreground mt-1">
-                  Register remote MCP servers by URL so tools can be discovered and called.
-                </p>
-              </div>
-
-              <div className="grid gap-2">
-                <input
-                  value={mcpName}
-                  onChange={(e) => setMcpName(e.target.value)}
-                  placeholder="Filesystem"
-                  className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground outline-none focus:border-primary/40"
-                />
-                <input
-                  value={mcpUrl}
-                  onChange={(e) => setMcpUrl(e.target.value)}
-                  placeholder="https://example.com/mcp"
-                  className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground outline-none focus:border-primary/40"
-                />
-                <button
-                  onClick={onAddMcpServer}
-                  disabled={savingMcp || !mcpName.trim() || !mcpUrl.trim()}
-                  className="w-full rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  {savingMcp ? "Saving..." : "Add MCP server"}
-                </button>
-                {mcpStatus && (
-                  <p className="text-[11px] text-muted-foreground leading-relaxed">{mcpStatus}</p>
-                )}
-              </div>
-
-              <div className="space-y-2 pt-2">
-                <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
-                  Registered servers
-                </p>
+          <div className="flex-1 overflow-y-auto px-6 py-5">
+            {activeTab === "models" && (
+              <div className="space-y-5 max-w-xl">
                 <div className="space-y-2">
-                  {mcpServers.length === 0 ? (
-                    <p className="text-[11px] text-muted-foreground">No MCP servers registered yet.</p>
-                  ) : (
-                    mcpServers.map((server) => (
-                      <div
-                        key={server.id}
-                        className="flex items-start justify-between gap-3 rounded-lg border border-border bg-card px-3 py-2"
-                      >
-                        <div className="min-w-0">
-                          <p className="text-xs font-medium text-foreground">{server.name}</p>
-                          <p className="text-[10px] text-muted-foreground mt-0.5 break-all">
-                            {server.url}
-                          </p>
-                        </div>
-                        <button
-                          onClick={() => onDeleteMcpServer(server.id)}
-                          className="text-[11px] text-muted-foreground hover:text-foreground transition-colors"
-                        >
-                          Remove
-                        </button>
-                      </div>
-                    ))
+                  <input
+                    value={pullModelName}
+                    onChange={(e) => setPullModelName(e.target.value)}
+                    placeholder="llama3.2:3b"
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary/40"
+                  />
+                  <button
+                    onClick={onPullModel}
+                    disabled={pullingModel || !pullModelName.trim()}
+                    className="rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    {pullingModel ? "Pulling..." : "Pull model"}
+                  </button>
+                  {pullStatus && (
+                    <p className="text-[11px] text-muted-foreground leading-relaxed">{pullStatus}</p>
                   )}
                 </div>
-              </div>
-            </section>
 
-            <section className="space-y-4 rounded-xl border border-border bg-background/40 p-4">
-              <div>
-                <h3 className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-                  Agents
-                </h3>
-                <p className="text-[11px] text-muted-foreground mt-1">
-                  Create reusable system prompts and invoke them with /agent name.
-                </p>
-              </div>
-
-              <div className="grid gap-2">
-                <input
-                  value={agentName}
-                  onChange={(e) => setAgentName(e.target.value)}
-                  placeholder="researcher"
-                  className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground outline-none focus:border-primary/40"
-                />
-                <textarea
-                  value={agentPrompt}
-                  onChange={(e) => setAgentPrompt(e.target.value)}
-                  placeholder="You are a careful research assistant..."
-                  rows={4}
-                  className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground outline-none focus:border-primary/40 resize-none"
-                />
-                <button
-                  onClick={onAddAgent}
-                  disabled={savingAgent || !agentName.trim() || !agentPrompt.trim()}
-                  className="w-full rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  {savingAgent ? "Saving..." : "Add agent"}
-                </button>
-                {agentStatus && (
-                  <p className="text-[11px] text-muted-foreground leading-relaxed">{agentStatus}</p>
-                )}
-              </div>
-
-              <div className="space-y-2">
-                <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
-                  Saved agents
-                </p>
                 <div className="space-y-2">
-                  {agents.length === 0 ? (
-                    <p className="text-[11px] text-muted-foreground">No agents saved yet.</p>
-                  ) : (
-                    agents.map((agent) => (
-                      <div
-                        key={agent.id}
-                        className="flex items-start justify-between gap-3 rounded-lg border border-border bg-card px-3 py-2"
-                      >
-                        <div className="min-w-0">
-                          <p className="text-xs font-medium text-foreground">{agent.name}</p>
-                          <p className="text-[10px] text-muted-foreground mt-0.5 line-clamp-2 break-words">
-                            {agent.system_prompt}
-                          </p>
-                        </div>
+                  <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
+                    Available models
+                  </p>
+                  <div className="space-y-2">
+                    {models.length === 0 ? (
+                      <p className="text-[11px] text-muted-foreground">No models found.</p>
+                    ) : (
+                      models.map((model) => (
                         <button
-                          onClick={() => onDeleteAgent(agent.id)}
-                          className="text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+                          key={model.id}
+                          onClick={() => onSelectModel(model.id)}
+                          className={`w-full rounded-lg border px-3 py-2.5 text-left transition-colors ${
+                            model.id === selectedModelId
+                              ? "bg-primary/10 border-primary/20"
+                              : "border-border bg-background hover:bg-secondary"
+                          }`}
                         >
-                          Remove
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="text-xs font-medium text-foreground truncate">{model.name}</p>
+                              <p className="text-[10px] text-muted-foreground mt-0.5 truncate">{model.id}</p>
+                            </div>
+                            <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded font-mono shrink-0">
+                              {model.badge}
+                            </span>
+                          </div>
                         </button>
-                      </div>
-                    ))
-                  )}
+                      ))
+                    )}
+                  </div>
                 </div>
               </div>
-            </section>
+            )}
 
-            <section className="space-y-4 rounded-xl border border-border bg-background/40 p-4">
-              <div>
-                <h3 className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-                  Skills
-                </h3>
-                <p className="text-[11px] text-muted-foreground mt-1">
-                  Save reusable instructions and invoke them with /skill name.
-                </p>
-              </div>
-
-              <div className="grid gap-2">
-                <input
-                  value={skillName}
-                  onChange={(e) => setSkillName(e.target.value)}
-                  placeholder="concise"
-                  className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground outline-none focus:border-primary/40"
-                />
-                <textarea
-                  value={skillInstructions}
-                  onChange={(e) => setSkillInstructions(e.target.value)}
-                  placeholder="Answer in short bullets and keep examples minimal."
-                  rows={4}
-                  className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground outline-none focus:border-primary/40 resize-none"
-                />
-                <button
-                  onClick={onAddSkill}
-                  disabled={savingSkill || !skillName.trim() || !skillInstructions.trim()}
-                  className="w-full rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  {savingSkill ? "Saving..." : "Add skill"}
-                </button>
-                {skillStatus && (
-                  <p className="text-[11px] text-muted-foreground leading-relaxed">{skillStatus}</p>
-                )}
-              </div>
-
-              <div className="space-y-2">
-                <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
-                  Saved skills
-                </p>
-                <div className="space-y-2">
-                  {skills.length === 0 ? (
-                    <p className="text-[11px] text-muted-foreground">No skills saved yet.</p>
-                  ) : (
-                    skills.map((skill) => (
-                      <div
-                        key={skill.id}
-                        className="flex items-start justify-between gap-3 rounded-lg border border-border bg-card px-3 py-2"
-                      >
-                        <div className="min-w-0">
-                          <p className="text-xs font-medium text-foreground">{skill.name}</p>
-                          <p className="text-[10px] text-muted-foreground mt-0.5 line-clamp-2 break-words">
-                            {skill.instructions}
-                          </p>
-                        </div>
-                        <button
-                          onClick={() => onDeleteSkill(skill.id)}
-                          className="text-[11px] text-muted-foreground hover:text-foreground transition-colors"
-                        >
-                          Remove
-                        </button>
-                      </div>
-                    ))
+            {activeTab === "mcp" && (
+              <div className="space-y-5 max-w-xl">
+                <div className="grid gap-2">
+                  <input
+                    value={mcpName}
+                    onChange={(e) => setMcpName(e.target.value)}
+                    placeholder="Filesystem"
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary/40"
+                  />
+                  <input
+                    value={mcpUrl}
+                    onChange={(e) => setMcpUrl(e.target.value)}
+                    placeholder="https://example.com/mcp"
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary/40"
+                  />
+                  <button
+                    onClick={onAddMcpServer}
+                    disabled={savingMcp || !mcpName.trim() || !mcpUrl.trim()}
+                    className="rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed justify-self-start"
+                  >
+                    {savingMcp ? "Saving..." : "Add MCP server"}
+                  </button>
+                  {mcpStatus && (
+                    <p className="text-[11px] text-muted-foreground leading-relaxed">{mcpStatus}</p>
                   )}
                 </div>
+
+                <div className="space-y-2">
+                  <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
+                    Registered servers
+                  </p>
+                  <div className="space-y-2">
+                    {mcpServers.length === 0 ? (
+                      <p className="text-[11px] text-muted-foreground">No MCP servers registered yet.</p>
+                    ) : (
+                      mcpServers.map((server) => (
+                        <div
+                          key={server.id}
+                          className="flex items-start justify-between gap-3 rounded-lg border border-border bg-background px-3 py-2.5"
+                        >
+                          <div className="min-w-0">
+                            <p className="text-xs font-medium text-foreground">{server.name}</p>
+                            <p className="text-[10px] text-muted-foreground mt-0.5 break-all">{server.url}</p>
+                          </div>
+                          <button
+                            onClick={() => onDeleteMcpServer(server.id)}
+                            className="text-[11px] text-muted-foreground hover:text-foreground transition-colors shrink-0"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
               </div>
-            </section>
+            )}
+
+            {activeTab === "agents" && (
+              <div className="space-y-5 max-w-xl">
+                <div className="grid gap-2">
+                  <input
+                    value={agentName}
+                    onChange={(e) => setAgentName(e.target.value)}
+                    placeholder="researcher"
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary/40"
+                  />
+                  <textarea
+                    value={agentPrompt}
+                    onChange={(e) => setAgentPrompt(e.target.value)}
+                    placeholder="You are a careful research assistant..."
+                    rows={4}
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary/40 resize-none"
+                  />
+                  <button
+                    onClick={onAddAgent}
+                    disabled={savingAgent || !agentName.trim() || !agentPrompt.trim()}
+                    className="rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed justify-self-start"
+                  >
+                    {savingAgent ? "Saving..." : "Add agent"}
+                  </button>
+                  {agentStatus && (
+                    <p className="text-[11px] text-muted-foreground leading-relaxed">{agentStatus}</p>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
+                    Saved agents
+                  </p>
+                  <div className="space-y-2">
+                    {agents.length === 0 ? (
+                      <p className="text-[11px] text-muted-foreground">No agents saved yet.</p>
+                    ) : (
+                      agents.map((agent) => (
+                        <div
+                          key={agent.id}
+                          className="flex items-start justify-between gap-3 rounded-lg border border-border bg-background px-3 py-2.5"
+                        >
+                          <div className="min-w-0">
+                            <p className="text-xs font-medium text-foreground">{agent.name}</p>
+                            <p className="text-[10px] text-muted-foreground mt-0.5 line-clamp-2 break-words">
+                              {agent.system_prompt}
+                            </p>
+                          </div>
+                          <button
+                            onClick={() => onDeleteAgent(agent.id)}
+                            className="text-[11px] text-muted-foreground hover:text-foreground transition-colors shrink-0"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {activeTab === "skills" && (
+              <div className="space-y-5 max-w-xl">
+                <div className="grid gap-2">
+                  <input
+                    value={skillName}
+                    onChange={(e) => setSkillName(e.target.value)}
+                    placeholder="concise"
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary/40"
+                  />
+                  <textarea
+                    value={skillInstructions}
+                    onChange={(e) => setSkillInstructions(e.target.value)}
+                    placeholder="Answer in short bullets and keep examples minimal."
+                    rows={4}
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary/40 resize-none"
+                  />
+                  <button
+                    onClick={onAddSkill}
+                    disabled={savingSkill || !skillName.trim() || !skillInstructions.trim()}
+                    className="rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed justify-self-start"
+                  >
+                    {savingSkill ? "Saving..." : "Add skill"}
+                  </button>
+                  {skillStatus && (
+                    <p className="text-[11px] text-muted-foreground leading-relaxed">{skillStatus}</p>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
+                    Saved skills
+                  </p>
+                  <div className="space-y-2">
+                    {skills.length === 0 ? (
+                      <p className="text-[11px] text-muted-foreground">No skills saved yet.</p>
+                    ) : (
+                      skills.map((skill) => (
+                        <div
+                          key={skill.id}
+                          className="flex items-start justify-between gap-3 rounded-lg border border-border bg-background px-3 py-2.5"
+                        >
+                          <div className="min-w-0">
+                            <p className="text-xs font-medium text-foreground">{skill.name}</p>
+                            <p className="text-[10px] text-muted-foreground mt-0.5 line-clamp-2 break-words">
+                              {skill.instructions}
+                            </p>
+                          </div>
+                          <button
+                            onClick={() => onDeleteSkill(skill.id)}
+                            className="text-[11px] text-muted-foreground hover:text-foreground transition-colors shrink-0"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>

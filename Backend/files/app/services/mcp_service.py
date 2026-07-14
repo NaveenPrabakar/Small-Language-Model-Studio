@@ -37,7 +37,7 @@ async def list_servers(db: AsyncSession) -> list[McpServer]:
 
 
 async def create_server(db: AsyncSession, *, name: str, url: str) -> McpServer:
-    server = McpServer(name=name, url=url.rstrip("/"))
+    server = McpServer(name=name, url=str(url).rstrip("/"))
     db.add(server)
     await db.commit()
     await db.refresh(server)
