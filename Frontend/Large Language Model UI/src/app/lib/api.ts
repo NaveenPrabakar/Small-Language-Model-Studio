@@ -50,6 +50,70 @@ export interface ApiSkill {
   updated_at: string;
 }
 
+export interface ApiEmbeddingModel {
+  id: string;
+  name: string;
+  parameter_size: string | null;
+  size_bytes: number | null;
+}
+
+export interface ApiEmbeddingCollection {
+  id: string;
+  name: string;
+  model_id: string;
+  source_filename: string;
+  chunk_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export async function listEmbeddingModels(): Promise<ApiEmbeddingModel[]> {
+  const res = await fetch(`${API_BASE}/api/embeddings/models`);
+  const data = await jsonOrThrow<{ models: ApiEmbeddingModel[] }>(res);
+  return data.models;
+}
+
+export async function pullEmbeddingModel(name: string): Promise<{ status: string; model: string }> {
+  const res = await fetch(`${API_BASE}/api/embeddings/models/pull`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+  return jsonOrThrow(res);
+}
+
+export async function listEmbeddingCollections(): Promise<ApiEmbeddingCollection[]> {
+  const res = await fetch(`${API_BASE}/api/embeddings/collections`);
+  const data = await jsonOrThrow<{ collections: ApiEmbeddingCollection[] }>(res);
+  return data.collections;
+}
+
+export async function createEmbeddingCollection(payload: {
+  name: string;
+  modelId: string;
+  file: File;
+}): Promise<ApiEmbeddingCollection> {
+  const formData = new FormData();
+  formData.append("name", payload.name);
+  formData.append("model_id", payload.modelId);
+  formData.append("file", payload.file);
+
+  const res = await fetch(`${API_BASE}/api/embeddings/collections`, {
+    method: "POST",
+    body: formData,
+  });
+  return jsonOrThrow(res);
+}
+
+export async function deleteEmbeddingCollection(collectionId: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/embeddings/collections/${collectionId}`, {
+    method: "DELETE",
+  });
+  if (!res.ok && res.status !== 204) {
+    throw new Error(`Failed to delete embedding collection (${res.status})`);
+  }
+}
+
 async function jsonOrThrow<T>(response: Response): Promise<T> {
   if (!response.ok) {
     const body = await response.json().catch(() => ({ detail: response.statusText }));

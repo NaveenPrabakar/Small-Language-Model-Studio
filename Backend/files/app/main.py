@@ -14,6 +14,8 @@ from .config import get_settings
 from .database import init_db
 from .ollama_client import OllamaError
 from .routers import chat, conversations, models, mcp_servers, presets
+from .routers import chat, conversations, models, mcp_servers, presets, embeddings
+
 
 
 @asynccontextmanager
@@ -38,6 +40,7 @@ app.include_router(mcp_servers.router)
 app.include_router(presets.router)
 app.include_router(conversations.router)
 app.include_router(chat.router)
+app.include_router(embeddings.router)
 
 
 @app.exception_handler(OllamaError)

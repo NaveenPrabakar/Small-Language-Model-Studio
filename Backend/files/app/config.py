@@ -19,6 +19,9 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
     max_context_messages: int = 20
     ollama_timeout_seconds: float = 120.0
+    embedding_chunk_size: int = 1000
+    embedding_chunk_overlap: int = 150
+    embedding_top_k: int = 5
 
     @property
     def cors_origin_list(self) -> List[str]:

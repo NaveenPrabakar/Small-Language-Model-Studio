@@ -24,6 +24,13 @@ import {
   pullModel,
   streamChat,
   updateConversation,
+  createEmbeddingCollection,
+  deleteEmbeddingCollection,
+  listEmbeddingCollections,
+  listEmbeddingModels,
+  pullEmbeddingModel,
+  type ApiEmbeddingCollection,
+  type ApiEmbeddingModel,
   type ApiAgent,
   type ApiConversation,
   type ApiMessage,
@@ -102,6 +109,13 @@ export default function AppShell() {
   const [skillStatus, setSkillStatus] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [attachedFile, setAttachedFile] = useState<File | null>(null);
+  const [embeddingModels, setEmbeddingModels] = useState<ApiEmbeddingModel[]>([]);
+  const [embeddingCollections, setEmbeddingCollections] = useState<ApiEmbeddingCollection[]>([]);
+  const [pullEmbedModelName, setPullEmbedModelName] = useState("");
+  const [pullingEmbedModel, setPullingEmbedModel] = useState(false);
+  const [pullEmbedStatus, setPullEmbedStatus] = useState<string | null>(null);
+  const [embeddingInProgress, setEmbeddingInProgress] = useState(false);
 
   const selectedModel = models.find((model) => model.id === selectedModelId) ?? models[0] ?? FALLBACK_MODELS[0];
   const activeConversation = conversations.find((conversation) => conversation.id === currentConversationId) ?? null;
@@ -122,6 +136,11 @@ export default function AppShell() {
         const loadedMcpServers = await listMcpServers().catch(() => []);
         const loadedAgents = await listAgents().catch(() => []);
         const loadedSkills = await listSkills().catch(() => []);
+        const loadedEmbeddingModels = await listEmbeddingModels().catch(() => []);
+        const loadedEmbeddingCollections = await listEmbeddingCollections().catch(() => []);
+        // ...
+        setEmbeddingModels(loadedEmbeddingModels);
+        setEmbeddingCollections(loadedEmbeddingCollections);
 
         if (cancelled) return;
 
@@ -181,6 +200,102 @@ export default function AppShell() {
   const refreshSkills = async () => {
     const loaded = await listSkills().catch(() => []);
     setSkills(loaded);
+  };
+
+  const refreshEmbeddingModels = async () => {
+    const loaded = await listEmbeddingModels().catch(() => []);
+    setEmbeddingModels(loaded);
+  };
+
+  const refreshEmbeddingCollections = async () => {
+    const loaded = await listEmbeddingCollections().catch(() => []);
+    setEmbeddingCollections(loaded);
+  };
+
+  const handlePullEmbedModel = async () => {
+    const modelName = pullEmbedModelName.trim();
+    if (!modelName || pullingEmbedModel) return;
+
+    setPullingEmbedModel(true);
+    setPullEmbedStatus(`Pulling ${modelName}...`);
+    try {
+      await pullEmbeddingModel(modelName);
+      setPullEmbedStatus(`Pulled ${modelName}.`);
+      setPullEmbedModelName("");
+      await refreshEmbeddingModels();
+    } catch (error) {
+      setPullEmbedStatus(error instanceof Error ? error.message : String(error));
+    } finally {
+      setPullingEmbedModel(false);
+    }
+  };
+
+  const handleDeleteEmbeddingCollection = async (collectionId: string) => {
+    await deleteEmbeddingCollection(collectionId);
+    await refreshEmbeddingCollections();
+  };
+
+  const EMBED_COMMAND_RE = /^\/embed\s+(\S+)\s*$/i;
+
+  const handleEmbedCommand = async (modelId: string) => {
+    const timestamp = () => new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
+    if (!attachedFile) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `${Date.now()}`,
+          role: "assistant",
+          content: "Attach a file with the paperclip button before running /embed.",
+          timestamp: timestamp(),
+        },
+      ]);
+      return;
+    }
+
+    const defaultName = attachedFile.name.replace(/\.[^/.]+$/, "");
+    const collectionName = window.prompt("Name this embedding collection", defaultName)?.trim();
+    if (!collectionName) return;
+
+    setInputValue("");
+    adjustTextarea();
+    setEmbeddingInProgress(true);
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: `${Date.now()}`,
+        role: "user",
+        content: `/embed ${modelId} (${attachedFile.name})`,
+        timestamp: timestamp(),
+      },
+    ]);
+
+    try {
+      const collection = await createEmbeddingCollection({
+        name: collectionName,
+        modelId,
+        file: attachedFile,
+      });
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `${Date.now() + 1}`,
+          role: "assistant",
+          content: `Embedded "${collection.source_filename}" into collection "${collection.name}" (${collection.chunk_count} chunks, model ${collection.model_id}). Use /useembed ${collection.name} <question> to query it.`,
+          timestamp: timestamp(),
+        },
+      ]);
+      setAttachedFile(null);
+      await refreshEmbeddingCollections();
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      setMessages((prev) => [
+        ...prev,
+        { id: `${Date.now() + 1}`, role: "assistant", content: `Embedding failed: ${detail}`, timestamp: timestamp() },
+      ]);
+    } finally {
+      setEmbeddingInProgress(false);
+    }
   };
 
   const handleNewConversation = async () => {
@@ -356,6 +471,14 @@ export default function AppShell() {
 
   const handleSend = async () => {
     const content = inputValue.trim();
+
+    if (!content || isTyping || embeddingInProgress) return;
+
+    const embedMatch = content.match(EMBED_COMMAND_RE);
+    if (embedMatch) {
+      await handleEmbedCommand(embedMatch[1]);
+      return;
+    }
     if (!content || isTyping) return;
 
     const timestamp = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
@@ -489,7 +612,10 @@ export default function AppShell() {
           onKeyDown={handleKeyDown}
           textareaRef={textareaRef}
           selectedModelName={selectedModel.name}
-          isTyping={isTyping}
+          isTyping={isTyping || embeddingInProgress}
+          attachedFile={attachedFile}
+          onAttachFile={setAttachedFile}
+          onClearAttachment={() => setAttachedFile(null)}
         />
       </div>
 
@@ -537,6 +663,14 @@ export default function AppShell() {
         skillStatus={skillStatus}
         onAddSkill={() => void handleAddSkill()}
         onDeleteSkill={(skillId) => void handleDeleteSkill(skillId)}
+        embeddingModels={embeddingModels}
+        embeddingCollections={embeddingCollections}
+        pullEmbedModelName={pullEmbedModelName}
+        setPullEmbedModelName={setPullEmbedModelName}
+        pullingEmbedModel={pullingEmbedModel}
+        pullEmbedStatus={pullEmbedStatus}
+        onPullEmbedModel={() => void handlePullEmbedModel()}
+        onDeleteEmbeddingCollection={(id) => void handleDeleteEmbeddingCollection(id)}
       />
     </div>
   );

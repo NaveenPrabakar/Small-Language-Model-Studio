@@ -8,7 +8,7 @@ import enum
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Index, String, Text
+from sqlalchemy import DateTime, Enum, ForeignKey, Index, String, Text, Integer
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base
@@ -95,3 +95,38 @@ class Skill(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
     )
+
+class EmbeddingCollection(Base):
+    __tablename__ = "embedding_collections"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    name: Mapped[str] = mapped_column(String(200), unique=True)
+    model_id: Mapped[str] = mapped_column(String(200))
+    source_filename: Mapped[str] = mapped_column(String(500))
+    chunk_count: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+    )
+
+    chunks: Mapped[list["EmbeddingChunk"]] = relationship(
+        back_populates="collection",
+        cascade="all, delete-orphan",
+        order_by="EmbeddingChunk.chunk_index",
+    )
+
+
+class EmbeddingChunk(Base):
+    __tablename__ = "embedding_chunks"
+    __table_args__ = (Index("ix_embedding_chunks_collection_id", "collection_id"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    collection_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("embedding_collections.id", ondelete="CASCADE")
+    )
+    chunk_index: Mapped[int] = mapped_column(Integer)
+    content: Mapped[str] = mapped_column(Text)
+    vector: Mapped[str] = mapped_column(Text)  # JSON-encoded list[float]
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+    collection: Mapped["EmbeddingCollection"] = relationship(back_populates="chunks")

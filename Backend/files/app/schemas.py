@@ -138,3 +138,39 @@ class SkillSummary(BaseModel):
 
 class SkillListResponse(BaseModel):
     skills: list[SkillSummary]
+
+# Embedding collections and models
+class EmbeddingModelInfo(BaseModel):
+    id: str
+    name: str
+    parameter_size: str | None = None
+    size_bytes: int | None = None
+
+
+class EmbeddingModelListResponse(BaseModel):
+    models: list[EmbeddingModelInfo]
+
+
+class EmbeddingModelPullRequest(BaseModel):
+    name: str = Field(..., min_length=1)
+
+
+class EmbeddingModelPullResponse(BaseModel):
+    status: str
+    model: str
+
+
+class EmbeddingCollectionSummary(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    name: str
+    model_id: str
+    source_filename: str
+    chunk_count: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class EmbeddingCollectionListResponse(BaseModel):
+    collections: list[EmbeddingCollectionSummary]

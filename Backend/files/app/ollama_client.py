@@ -127,6 +127,29 @@ class OllamaClient:
             raise OllamaError(
                 f"Ollama returned {exc.response.status_code} for /api/chat"
             ) from exc
+    
+    async def embed(self, model: str, inputs: list[str]) -> list[list[float]]:
+        """Return one embedding vector per input string from POST /api/embed."""
+        payload = {"model": model, "input": inputs}
+        try:
+            async with httpx.AsyncClient(timeout=self._timeout) as client:
+                response = await client.post(f"{self._base_url}/api/embed", json=payload)
+                response.raise_for_status()
+        except httpx.ConnectError as exc:
+            raise OllamaUnavailableError(
+                f"Could not reach Ollama at {self._base_url}. Is `ollama serve` running?"
+            ) from exc
+        except httpx.HTTPStatusError as exc:
+            raise OllamaError(
+                f"Ollama returned {exc.response.status_code} for /api/embed. "
+                f"Is '{model}' an embedding-capable model?"
+            ) from exc
+
+        data = response.json()
+        embeddings = data.get("embeddings")
+        if not embeddings:
+            raise OllamaError(f"Ollama returned no embeddings for model '{model}'")
+        return embeddings
 
 
 def get_ollama_client() -> OllamaClient:

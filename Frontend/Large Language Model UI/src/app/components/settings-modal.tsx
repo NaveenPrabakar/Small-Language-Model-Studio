@@ -1,9 +1,8 @@
 import { useState } from "react";
-import { Blocks, Bot, Cpu, Network, X } from "lucide-react";
+import { Blocks, Bot, Cpu, Layers, Network, X } from "lucide-react";
+import type { ApiAgent, ApiEmbeddingCollection, ApiEmbeddingModel, ApiMcpServer, ApiModel, ApiSkill } from "../lib/api";
 
-import type { ApiAgent, ApiMcpServer, ApiModel, ApiSkill } from "../lib/api";
-
-type SettingsTab = "models" | "mcp" | "agents" | "skills";
+type SettingsTab = "models" | "mcp" | "agents" | "skills" | "embeddings";
 
 interface TabDef {
   id: SettingsTab;
@@ -50,6 +49,14 @@ export function SettingsModal({
   skillStatus,
   onAddSkill,
   onDeleteSkill,
+  embeddingModels,
+  embeddingCollections,
+  pullEmbedModelName,
+  setPullEmbedModelName,
+  pullingEmbedModel,
+  pullEmbedStatus,
+  onPullEmbedModel,
+  onDeleteEmbeddingCollection
 }: {
   open: boolean;
   onClose: () => void;
@@ -88,6 +95,14 @@ export function SettingsModal({
   skillStatus: string | null;
   onAddSkill: () => void;
   onDeleteSkill: (skillId: string) => void;
+  embeddingModels: ApiEmbeddingModel[];
+  embeddingCollections: ApiEmbeddingCollection[];
+  pullEmbedModelName: string;
+  setPullEmbedModelName: (value: string) => void;
+  pullingEmbedModel: boolean;
+  pullEmbedStatus: string | null;
+  onPullEmbedModel: () => void;
+  onDeleteEmbeddingCollection: (collectionId: string) => void;
 }) {
   const [activeTab, setActiveTab] = useState<SettingsTab>("models");
 
@@ -98,6 +113,7 @@ export function SettingsModal({
     { id: "mcp", label: "MCP servers", icon: Network, count: mcpServers.length },
     { id: "agents", label: "Agents", icon: Bot, count: agents.length },
     { id: "skills", label: "Skills", icon: Blocks, count: skills.length },
+    { id: "embeddings", label: "Embeddings", icon: Layers, count: embeddingCollections.length }
   ];
 
   return (
@@ -155,6 +171,7 @@ export function SettingsModal({
                 {activeTab === "mcp" && "Register remote MCP servers so tools can be discovered and called."}
                 {activeTab === "agents" && "Reusable system prompts, invoked with /agent name."}
                 {activeTab === "skills" && "Reusable instructions, invoked with /skill name."}
+                {activeTab === "embeddings" && "Pull local embedding models and manage document embeddings."}
               </p>
             </div>
             <button
@@ -390,6 +407,92 @@ export function SettingsModal({
                           </div>
                           <button
                             onClick={() => onDeleteSkill(skill.id)}
+                            className="text-[11px] text-muted-foreground hover:text-foreground transition-colors shrink-0"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+            {activeTab === "embeddings" && (
+              <div className="space-y-5 max-w-xl">
+                <div className="space-y-2">
+                  <input
+                    value={pullEmbedModelName}
+                    onChange={(e) => setPullEmbedModelName(e.target.value)}
+                    placeholder="nomic-embed-text"
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary/40"
+                  />
+                  <button
+                    onClick={onPullEmbedModel}
+                    disabled={pullingEmbedModel || !pullEmbedModelName.trim()}
+                    className="rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    {pullingEmbedModel ? "Pulling..." : "Pull embedding model"}
+                  </button>
+                  {pullEmbedStatus && (
+                    <p className="text-[11px] text-muted-foreground leading-relaxed">{pullEmbedStatus}</p>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
+                    Local embedding models
+                  </p>
+                  <div className="space-y-2">
+                    {embeddingModels.length === 0 ? (
+                      <p className="text-[11px] text-muted-foreground">
+                        No embedding models detected yet. Pull one above (e.g. nomic-embed-text,
+                        mxbai-embed-large, all-minilm).
+                      </p>
+                    ) : (
+                      embeddingModels.map((model) => (
+                        <div
+                          key={model.id}
+                          className="flex items-center justify-between gap-3 rounded-lg border border-border bg-background px-3 py-2.5"
+                        >
+                          <p className="text-xs font-medium text-foreground truncate">{model.name}</p>
+                          {model.parameter_size && (
+                            <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded font-mono shrink-0">
+                              {model.parameter_size}
+                            </span>
+                          )}
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
+                    Embedding collections
+                  </p>
+                  <p className="text-[11px] text-muted-foreground leading-relaxed">
+                    Create one from the chat composer: attach a file, then send{" "}
+                    <code className="text-violet-300">/embed &lt;model&gt;</code>. Query it with{" "}
+                    <code className="text-violet-300">/useembed &lt;name&gt; &lt;question&gt;</code>.
+                  </p>
+                  <div className="space-y-2">
+                    {embeddingCollections.length === 0 ? (
+                      <p className="text-[11px] text-muted-foreground">No embeddings created yet.</p>
+                    ) : (
+                      embeddingCollections.map((collection) => (
+                        <div
+                          key={collection.id}
+                          className="flex items-start justify-between gap-3 rounded-lg border border-border bg-background px-3 py-2.5"
+                        >
+                          <div className="min-w-0">
+                            <p className="text-xs font-medium text-foreground truncate">{collection.name}</p>
+                            <p className="text-[10px] text-muted-foreground mt-0.5 truncate">
+                              {collection.source_filename} - {collection.chunk_count} chunks - {collection.model_id}
+                            </p>
+                          </div>
+                          <button
+                            onClick={() => onDeleteEmbeddingCollection(collection.id)}
                             className="text-[11px] text-muted-foreground hover:text-foreground transition-colors shrink-0"
                           >
                             Remove

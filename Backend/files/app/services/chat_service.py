@@ -8,7 +8,7 @@ from ..config import get_settings
 from ..database import session_scope
 from ..models import MessageRole
 from ..ollama_client import OllamaClient, OllamaError
-from . import conversation_service, mcp_service, preset_service
+from . import conversation_service, embedding_service, mcp_service, preset_service
 
 MAX_TOOL_ROUNDS = 3
 
@@ -80,9 +80,10 @@ def _assistant_result_messages(tool_results: list[dict]) -> list[dict]:
     ]
 
 
-def _parse_prompt_directives(user_content: str) -> tuple[str | None, list[str], str]:
+def _parse_prompt_directives(user_content: str) -> tuple[str | None, list[str], str | None, str]:
     agent_name: str | None = None
     skill_names: list[str] = []
+    embed_collection_name: str | None = None
     lines = user_content.splitlines()
     body_index = 0
 
@@ -102,13 +103,15 @@ def _parse_prompt_directives(user_content: str) -> tuple[str | None, list[str], 
             agent_name = argument
         elif command == "/skill" and argument:
             skill_names.append(argument)
+        elif command == "/useembed" and argument:
+            embed_collection_name = argument
         else:
             body_index = index
             break
         body_index = index + 1
 
     body = "\n".join(lines[body_index:]).strip()
-    return agent_name, skill_names, body
+    return agent_name, skill_names, embed_collection_name, body
 
 
 async def _load_prompt_messages(
@@ -151,9 +154,11 @@ async def stream_chat_turn(
     model_override: str | None = None,
 ) -> AsyncIterator[str]:
     settings = get_settings()
-    agent_name, skill_names, cleaned_content = _parse_prompt_directives(user_content)
+    agent_name, skill_names, embed_collection_name, cleaned_content = _parse_prompt_directives(
+        user_content
+    )
     if not cleaned_content:
-        yield _sse("error", {"detail": "Message content is required after /agent or /skill."})
+        yield _sse("error", {"detail": "Message content is required after /agent, /skill, or /useembed."})
         return
 
     async with session_scope() as db:
@@ -177,6 +182,7 @@ async def stream_chat_turn(
 
         history = await conversation_service.list_messages(db, conversation.id)
         base_messages = conversation_service.to_ollama_messages(history, settings.max_context_messages)
+
         try:
             prompt_messages = await _load_prompt_messages(
                 db, agent_name=agent_name, skill_names=skill_names
@@ -185,6 +191,40 @@ async def stream_chat_turn(
             yield _sse("error", {"detail": str(exc)})
             return
         base_messages = [*prompt_messages, *base_messages]
+
+        if embed_collection_name:
+            collection = await embedding_service.get_collection_by_name(db, embed_collection_name)
+            if collection is None:
+                yield _sse(
+                    "error",
+                    {"detail": f"Embedding collection not found: {embed_collection_name}"},
+                )
+                return
+            try:
+                retrieved = await embedding_service.query_collection(
+                    db, ollama, collection=collection, query=cleaned_content
+                )
+            except OllamaError as exc:
+                yield _sse("error", {"detail": str(exc)})
+                return
+
+            if retrieved:
+                context_block = "\n\n".join(
+                    f"[chunk {item.chunk_index}, score {item.score:.3f}]\n{item.content}"
+                    for item in retrieved
+                )
+                base_messages = [
+                    {
+                        "role": "system",
+                        "content": (
+                            f"Relevant context retrieved from embedding collection "
+                            f"'{collection.name}':\n\n{context_block}\n\n"
+                            "Use this context to answer the user's question. If the context "
+                            "doesn't contain the answer, say so rather than guessing."
+                        ),
+                    },
+                    *base_messages,
+                ]
 
         servers = await mcp_service.list_servers(db)
         discovered_tools = await _discover_tools(servers)
