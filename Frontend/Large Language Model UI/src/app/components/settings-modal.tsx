@@ -1,8 +1,12 @@
 import { useState } from "react";
 import { Blocks, Bot, Cpu, Layers, Network, X } from "lucide-react";
-import type { ApiAgent, ApiEmbeddingCollection, ApiEmbeddingModel, ApiMcpServer, ApiModel, ApiSkill } from "../lib/api";
+import { WorkflowBuilder } from "./workflow-builder";
+import type {
+  ApiAgent, ApiAgentWorkflow, ApiEmbeddingCollection, ApiEmbeddingModel,
+  ApiMcpServer, ApiModel, ApiSkill, ApiWorkflowEdge, ApiWorkflowNode,
+} from "../lib/api";
 
-type SettingsTab = "models" | "mcp" | "agents" | "skills" | "embeddings";
+type SettingsTab = "models" | "mcp" | "agents" | "workflows" | "skills" | "embeddings";
 
 interface TabDef {
   id: SettingsTab;
@@ -56,7 +60,10 @@ export function SettingsModal({
   pullingEmbedModel,
   pullEmbedStatus,
   onPullEmbedModel,
-  onDeleteEmbeddingCollection
+  onDeleteEmbeddingCollection,
+  agentWorkflows,
+  onSaveAgentWorkflow,
+  onDeleteAgentWorkflow,
 }: {
   open: boolean;
   onClose: () => void;
@@ -103,6 +110,15 @@ export function SettingsModal({
   pullEmbedStatus: string | null;
   onPullEmbedModel: () => void;
   onDeleteEmbeddingCollection: (collectionId: string) => void;
+  agentWorkflows: ApiAgentWorkflow[];
+  onSaveAgentWorkflow: (payload: {
+    id: string | null;
+    name: string;
+    description: string | null;
+    nodes: ApiWorkflowNode[];
+    edges: ApiWorkflowEdge[];
+  }) => Promise<void>;
+  onDeleteAgentWorkflow: (workflowId: string) => void;
 }) {
   const [activeTab, setActiveTab] = useState<SettingsTab>("models");
 
@@ -112,8 +128,9 @@ export function SettingsModal({
     { id: "models", label: "Models", icon: Cpu, count: models.length },
     { id: "mcp", label: "MCP servers", icon: Network, count: mcpServers.length },
     { id: "agents", label: "Agents", icon: Bot, count: agents.length },
+    { id: "workflows", label: "Workflows", icon: Network, count: agentWorkflows.length },
     { id: "skills", label: "Skills", icon: Blocks, count: skills.length },
-    { id: "embeddings", label: "Embeddings", icon: Layers, count: embeddingCollections.length }
+    { id: "embeddings", label: "Embeddings", icon: Layers, count: embeddingCollections.length },
   ];
 
   return (
@@ -170,6 +187,8 @@ export function SettingsModal({
                 {activeTab === "models" && "Pull new local models and choose which one is active."}
                 {activeTab === "mcp" && "Register remote MCP servers so tools can be discovered and called."}
                 {activeTab === "agents" && "Reusable system prompts, invoked with /agent name."}
+                {activeTab === "workflows" &&
+                  "Drag skills, embeddings, and MCP tools onto a canvas to build a multi-step agent, invoked with /workflow name."}
                 {activeTab === "skills" && "Reusable instructions, invoked with /skill name."}
                 {activeTab === "embeddings" && "Pull local embedding models and manage document embeddings."}
               </p>
@@ -356,6 +375,18 @@ export function SettingsModal({
                   </div>
                 </div>
               </div>
+            )}
+
+            {activeTab === "workflows" && (
+              <WorkflowBuilder
+                workflows={agentWorkflows}
+                skills={skills}
+                embeddingCollections={embeddingCollections}
+                mcpServers={mcpServers}
+                models={models}
+                onSave={onSaveAgentWorkflow}
+                onDelete={onDeleteAgentWorkflow}
+              />
             )}
 
             {activeTab === "skills" && (

@@ -15,6 +15,7 @@ from .database import init_db
 from .ollama_client import OllamaError
 from .routers import chat, conversations, models, mcp_servers, presets
 from .routers import chat, conversations, models, mcp_servers, presets, embeddings
+from .routers import chat, conversations, models, mcp_servers, presets, embeddings, agent_workflows
 
 
 
@@ -41,6 +42,7 @@ app.include_router(presets.router)
 app.include_router(conversations.router)
 app.include_router(chat.router)
 app.include_router(embeddings.router)
+app.include_router(agent_workflows.router)
 
 
 @app.exception_handler(OllamaError)

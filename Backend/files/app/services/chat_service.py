@@ -8,7 +8,7 @@ from ..config import get_settings
 from ..database import session_scope
 from ..models import MessageRole
 from ..ollama_client import OllamaClient, OllamaError
-from . import conversation_service, embedding_service, mcp_service, preset_service
+from . import agent_workflow_service, conversation_service, embedding_service, mcp_service, preset_service
 
 MAX_TOOL_ROUNDS = 3
 
@@ -80,10 +80,14 @@ def _assistant_result_messages(tool_results: list[dict]) -> list[dict]:
     ]
 
 
-def _parse_prompt_directives(user_content: str) -> tuple[str | None, list[str], str | None, str]:
+def _parse_prompt_directives(
+    user_content: str,
+) -> tuple[str | None, list[str], str | None, str | None, str]:
+    """Returns (agent_name, skill_names, embed_collection_name, workflow_name, body)."""
     agent_name: str | None = None
     skill_names: list[str] = []
     embed_collection_name: str | None = None
+    workflow_name: str | None = None
     lines = user_content.splitlines()
     body_index = 0
 
@@ -105,13 +109,15 @@ def _parse_prompt_directives(user_content: str) -> tuple[str | None, list[str], 
             skill_names.append(argument)
         elif command == "/useembed" and argument:
             embed_collection_name = argument
+        elif command == "/workflow" and argument:
+            workflow_name = argument
         else:
             body_index = index
             break
         body_index = index + 1
 
     body = "\n".join(lines[body_index:]).strip()
-    return agent_name, skill_names, embed_collection_name, body
+    return agent_name, skill_names, embed_collection_name, workflow_name, body
 
 
 async def _load_prompt_messages(
@@ -137,6 +143,50 @@ async def _load_prompt_messages(
     return messages
 
 
+async def _load_workflow_result(
+    db, *, workflow_name: str | None
+) -> agent_workflow_service.WorkflowExecutionResult | None:
+    if not workflow_name:
+        return None
+    workflow = await agent_workflow_service.get_workflow_by_name(db, workflow_name)
+    if workflow is None:
+        raise ValueError(f"Agent workflow not found: {workflow_name}")
+    return await agent_workflow_service.execute_workflow(
+        db,
+        workflow,
+        get_skill=preset_service.get_skill_by_name,
+        get_embedding_collection=embedding_service.get_collection_by_name,
+    )
+
+
+async def _build_embedding_context_messages(
+    db, ollama: OllamaClient, *, collection_names: list[str], query: str
+) -> list[dict]:
+    messages: list[dict] = []
+    for collection_name in collection_names:
+        collection = await embedding_service.get_collection_by_name(db, collection_name)
+        if collection is None:
+            raise ValueError(f"Embedding collection not found: {collection_name}")
+        retrieved = await embedding_service.query_collection(db, ollama, collection=collection, query=query)
+        if not retrieved:
+            continue
+        context_block = "\n\n".join(
+            f"[chunk {item.chunk_index}, score {item.score:.3f}]\n{item.content}" for item in retrieved
+        )
+        messages.append(
+            {
+                "role": "system",
+                "content": (
+                    f"Relevant context retrieved from embedding collection '{collection.name}':\n\n"
+                    f"{context_block}\n\n"
+                    "Use this context to answer the user's question. If the context doesn't "
+                    "contain the answer, say so rather than guessing."
+                ),
+            }
+        )
+    return messages
+
+
 async def _discover_tools(servers: list[mcp_service.McpServer]) -> list[mcp_service.DiscoveredTool]:
     discovered: list[mcp_service.DiscoveredTool] = []
     for server in servers:
@@ -154,11 +204,14 @@ async def stream_chat_turn(
     model_override: str | None = None,
 ) -> AsyncIterator[str]:
     settings = get_settings()
-    agent_name, skill_names, embed_collection_name, cleaned_content = _parse_prompt_directives(
+    agent_name, skill_names, embed_collection_name, workflow_name, cleaned_content = _parse_prompt_directives(
         user_content
     )
     if not cleaned_content:
-        yield _sse("error", {"detail": "Message content is required after /agent, /skill, or /useembed."})
+        yield _sse(
+            "error",
+            {"detail": "Message content is required after /agent, /skill, /useembed, or /workflow."},
+        )
         return
 
     async with session_scope() as db:
@@ -167,7 +220,15 @@ async def stream_chat_turn(
             yield _sse("error", {"detail": "Conversation not found"})
             return
 
-        model = model_override or conversation.model_id
+        try:
+            workflow_result = await _load_workflow_result(db, workflow_name=workflow_name)
+        except ValueError as exc:
+            yield _sse("error", {"detail": str(exc)})
+            return
+
+        # Request-level model override wins, then a workflow's Model node, then the
+        # conversation's own model.
+        model = model_override or (workflow_result.model_override if workflow_result else None) or conversation.model_id
 
         existing_messages = await conversation_service.list_messages(db, conversation.id)
         if not existing_messages:
@@ -184,50 +245,37 @@ async def stream_chat_turn(
         base_messages = conversation_service.to_ollama_messages(history, settings.max_context_messages)
 
         try:
-            prompt_messages = await _load_prompt_messages(
-                db, agent_name=agent_name, skill_names=skill_names
-            )
+            prompt_messages = await _load_prompt_messages(db, agent_name=agent_name, skill_names=skill_names)
         except ValueError as exc:
             yield _sse("error", {"detail": str(exc)})
             return
-        base_messages = [*prompt_messages, *base_messages]
 
-        if embed_collection_name:
-            collection = await embedding_service.get_collection_by_name(db, embed_collection_name)
-            if collection is None:
-                yield _sse(
-                    "error",
-                    {"detail": f"Embedding collection not found: {embed_collection_name}"},
-                )
-                return
+        workflow_system_messages = workflow_result.system_messages if workflow_result else []
+        base_messages = [*prompt_messages, *workflow_system_messages, *base_messages]
+
+        embedding_collection_names = list(embed_collection_name and [embed_collection_name] or [])
+        if workflow_result:
+            embedding_collection_names += workflow_result.embedding_collection_names
+
+        if embedding_collection_names:
             try:
-                retrieved = await embedding_service.query_collection(
-                    db, ollama, collection=collection, query=cleaned_content
+                embedding_messages = await _build_embedding_context_messages(
+                    db, ollama, collection_names=embedding_collection_names, query=cleaned_content
                 )
+            except ValueError as exc:
+                yield _sse("error", {"detail": str(exc)})
+                return
             except OllamaError as exc:
                 yield _sse("error", {"detail": str(exc)})
                 return
-
-            if retrieved:
-                context_block = "\n\n".join(
-                    f"[chunk {item.chunk_index}, score {item.score:.3f}]\n{item.content}"
-                    for item in retrieved
-                )
-                base_messages = [
-                    {
-                        "role": "system",
-                        "content": (
-                            f"Relevant context retrieved from embedding collection "
-                            f"'{collection.name}':\n\n{context_block}\n\n"
-                            "Use this context to answer the user's question. If the context "
-                            "doesn't contain the answer, say so rather than guessing."
-                        ),
-                    },
-                    *base_messages,
-                ]
+            base_messages = [*embedding_messages, *base_messages]
 
         servers = await mcp_service.list_servers(db)
         discovered_tools = await _discover_tools(servers)
+        if workflow_result:
+            discovered_tools = agent_workflow_service.filter_tools_by_workflow(
+                discovered_tools, workflow_result.allowed_tool_keys
+            )
 
         try:
             if not discovered_tools:

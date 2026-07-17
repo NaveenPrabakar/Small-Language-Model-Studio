@@ -12,6 +12,50 @@ from pydantic import AnyUrl, BaseModel, ConfigDict, Field
 ModelBadge = Literal["Fast", "Balanced", "Powerful"]
 
 
+# ---------- Agent workflows ----------
+
+WorkflowNodeType = Literal["trigger", "skill", "embedding", "mcp_tool", "model", "output"]
+class WorkflowNode(BaseModel):
+    id: str
+    type: WorkflowNodeType
+    x: float = 0
+    y: float = 0
+    config: dict[str, str] = Field(default_factory=dict)
+
+
+class WorkflowEdge(BaseModel):
+    id: str
+    source: str
+    target: str
+
+
+class AgentWorkflowCreate(BaseModel):
+    name: str = Field(..., min_length=1)
+    description: str | None = None
+    nodes: list[WorkflowNode] = Field(default_factory=list)
+    edges: list[WorkflowEdge] = Field(default_factory=list)
+
+
+class AgentWorkflowUpdate(BaseModel):
+    description: str | None = None
+    nodes: list[WorkflowNode] | None = None
+    edges: list[WorkflowEdge] | None = None
+
+
+class AgentWorkflowSummary(BaseModel):
+    id: str
+    name: str
+    description: str | None = None
+    nodes: list[WorkflowNode]
+    edges: list[WorkflowEdge]
+    created_at: datetime
+    updated_at: datetime
+
+
+class AgentWorkflowListResponse(BaseModel):
+    workflows: list[AgentWorkflowSummary]
+
+
 class ModelInfo(BaseModel):
     id: str
     name: str

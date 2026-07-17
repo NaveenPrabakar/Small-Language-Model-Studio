@@ -29,6 +29,10 @@ import {
   listEmbeddingCollections,
   listEmbeddingModels,
   pullEmbeddingModel,
+  createAgentWorkflow,
+  deleteAgentWorkflow,
+  listAgentWorkflows,
+  updateAgentWorkflow,
   type ApiEmbeddingCollection,
   type ApiEmbeddingModel,
   type ApiAgent,
@@ -37,6 +41,9 @@ import {
   type ApiMcpServer,
   type ApiModel,
   type ApiSkill,
+  type ApiAgentWorkflow,
+  type ApiWorkflowEdge,
+  type ApiWorkflowNode,
 } from "./lib/api";
 
 const FALLBACK_MODELS: ApiModel[] = [
@@ -116,6 +123,7 @@ export default function AppShell() {
   const [pullingEmbedModel, setPullingEmbedModel] = useState(false);
   const [pullEmbedStatus, setPullEmbedStatus] = useState<string | null>(null);
   const [embeddingInProgress, setEmbeddingInProgress] = useState(false);
+  const [agentWorkflows, setAgentWorkflows] = useState<ApiAgentWorkflow[]>([]);
 
   const selectedModel = models.find((model) => model.id === selectedModelId) ?? models[0] ?? FALLBACK_MODELS[0];
   const activeConversation = conversations.find((conversation) => conversation.id === currentConversationId) ?? null;
@@ -138,9 +146,11 @@ export default function AppShell() {
         const loadedSkills = await listSkills().catch(() => []);
         const loadedEmbeddingModels = await listEmbeddingModels().catch(() => []);
         const loadedEmbeddingCollections = await listEmbeddingCollections().catch(() => []);
+        const loadedAgentWorkflows = await listAgentWorkflows().catch(() => []);
         // ...
         setEmbeddingModels(loadedEmbeddingModels);
         setEmbeddingCollections(loadedEmbeddingCollections);
+        setAgentWorkflows(loadedAgentWorkflows);
 
         if (cancelled) return;
 
@@ -195,6 +205,40 @@ export default function AppShell() {
   const refreshAgents = async () => {
     const loaded = await listAgents().catch(() => []);
     setAgents(loaded);
+  };
+
+  const refreshAgentWorkflows = async () => {
+    const loaded = await listAgentWorkflows().catch(() => []);
+    setAgentWorkflows(loaded);
+  };
+
+  const handleSaveAgentWorkflow = async (payload: {
+    id: string | null;
+    name: string;
+    description: string | null;
+    nodes: ApiWorkflowNode[];
+    edges: ApiWorkflowEdge[];
+  }) => {
+    if (payload.id) {
+      await updateAgentWorkflow(payload.id, {
+        description: payload.description,
+        nodes: payload.nodes,
+        edges: payload.edges,
+      });
+    } else {
+      await createAgentWorkflow({
+        name: payload.name,
+        description: payload.description,
+        nodes: payload.nodes,
+        edges: payload.edges,
+      });
+    }
+    await refreshAgentWorkflows();
+  };
+
+  const handleDeleteAgentWorkflow = async (workflowId: string) => {
+    await deleteAgentWorkflow(workflowId);
+    await refreshAgentWorkflows();
   };
 
   const refreshSkills = async () => {
@@ -671,6 +715,9 @@ export default function AppShell() {
         pullEmbedStatus={pullEmbedStatus}
         onPullEmbedModel={() => void handlePullEmbedModel()}
         onDeleteEmbeddingCollection={(id) => void handleDeleteEmbeddingCollection(id)}
+        agentWorkflows={agentWorkflows}
+        onSaveAgentWorkflow={(payload) => handleSaveAgentWorkflow(payload)}
+        onDeleteAgentWorkflow={(workflowId) => void handleDeleteAgentWorkflow(workflowId)}
       />
     </div>
   );

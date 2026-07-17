@@ -67,6 +67,71 @@ export interface ApiEmbeddingCollection {
   updated_at: string;
 }
 
+export interface ApiWorkflowNode {
+  id: string;
+  type: "trigger" | "skill" | "embedding" | "mcp_tool" | "model" | "output";
+  x: number;
+  y: number;
+  config: Record<string, string>;
+}
+
+export interface ApiWorkflowEdge {
+  id: string;
+  source: string;
+  target: string;
+}
+
+export interface ApiAgentWorkflow {
+  id: string;
+  name: string;
+  description: string | null;
+  nodes: ApiWorkflowNode[];
+  edges: ApiWorkflowEdge[];
+  created_at: string;
+  updated_at: string;
+}
+
+export async function listAgentWorkflows(): Promise<ApiAgentWorkflow[]> {
+  const res = await fetch(`${API_BASE}/api/agent-workflows`);
+  const data = await jsonOrThrow<{ workflows: ApiAgentWorkflow[] }>(res);
+  return data.workflows;
+}
+
+export async function createAgentWorkflow(payload: {
+  name: string;
+  description?: string | null;
+  nodes: ApiWorkflowNode[];
+  edges: ApiWorkflowEdge[];
+}): Promise<ApiAgentWorkflow> {
+  const res = await fetch(`${API_BASE}/api/agent-workflows`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  return jsonOrThrow(res);
+}
+
+export async function updateAgentWorkflow(
+  workflowId: string,
+  payload: { description?: string | null; nodes?: ApiWorkflowNode[]; edges?: ApiWorkflowEdge[] },
+): Promise<ApiAgentWorkflow> {
+  const res = await fetch(`${API_BASE}/api/agent-workflows/${workflowId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  return jsonOrThrow(res);
+}
+
+export async function deleteAgentWorkflow(workflowId: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/agent-workflows/${workflowId}`, {
+    method: "DELETE",
+  });
+  if (!res.ok && res.status !== 204) {
+    throw new Error(`Failed to delete workflow (${res.status})`);
+  }
+}
+
 export async function listEmbeddingModels(): Promise<ApiEmbeddingModel[]> {
   const res = await fetch(`${API_BASE}/api/embeddings/models`);
   const data = await jsonOrThrow<{ models: ApiEmbeddingModel[] }>(res);

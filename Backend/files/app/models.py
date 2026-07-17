@@ -96,6 +96,19 @@ class Skill(Base):
         DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
     )
 
+class AgentWorkflow(Base):
+    __tablename__ = "agent_workflows"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    name: Mapped[str] = mapped_column(String(200), unique=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    nodes: Mapped[str] = mapped_column(Text, default="[]")  # JSON-encoded list[WorkflowNode]
+    edges: Mapped[str] = mapped_column(Text, default="[]")  # JSON-encoded list[WorkflowEdge]
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+    )
+
 class EmbeddingCollection(Base):
     __tablename__ = "embedding_collections"
 
