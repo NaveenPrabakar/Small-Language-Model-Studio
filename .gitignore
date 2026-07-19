@@ -1,0 +1,58 @@
+node_modules/
+
+# ---------- Python ----------
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+*.egg
+.Python
+.venv/
+venv/
+env/
+
+# ---------- PyInstaller build artifacts ----------
+# 'build/' holds intermediate PyInstaller work files (warn-*.txt, xref-*.html, etc.)
+# 'dist/' holds the final .exe — this ships via GitHub Releases, not git
+build/
+dist/
+*.spec.bak
+*.pkg
+
+# ---------- Runtime data ----------
+# SQLite DB and any uploaded/ingested files — user data, not source
+Backend/files/data/
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+
+# ---------- Environment / secrets ----------
+.env
+.env.local
+!.env.example
+
+# ---------- Frontend build output ----------
+Frontend/Large Language Model UI/dist/
+Backend/files/frontend_dist/
+Frontend/Large Language Model UI/node_modules/
+
+# ---------- Node ----------
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ---------- OS / editor cruft ----------
+.DS_Store
+Thumbs.db
+*.swp
+.vscode/
+.idea/
+
+# ---------- Test artifacts ----------
+.pytest_cache/
+.coverage
+htmlcov/
