@@ -6,6 +6,7 @@ import { ChatMessageList } from "./components/chat-message-list";
 import { ChatSidebar } from "./components/chat-sidebar";
 import { SettingsModal } from "./components/settings-modal";
 import type { Message } from "./chat-types";
+import { DocsPage } from "./components/docs/docs-page";
 import {
   createAgent,
   createConversation,
@@ -124,6 +125,7 @@ export default function AppShell() {
   const [pullEmbedStatus, setPullEmbedStatus] = useState<string | null>(null);
   const [embeddingInProgress, setEmbeddingInProgress] = useState(false);
   const [agentWorkflows, setAgentWorkflows] = useState<ApiAgentWorkflow[]>([]);
+  const [docsOpen, setDocsOpen] = useState(false);
 
   const selectedModel = models.find((model) => model.id === selectedModelId) ?? models[0] ?? FALLBACK_MODELS[0];
   const activeConversation = conversations.find((conversation) => conversation.id === currentConversationId) ?? null;
@@ -633,6 +635,7 @@ export default function AppShell() {
         onOpenSettings={() => setSettingsOpen(true)}
         onRenameConversation={(conversation) => void handleRenameConversation(conversation)}
         onDeleteConversation={(conversation) => void handleDeleteConversation(conversation)}
+        onOpenDocs={() => setDocsOpen(true)}
       />
 
       <div className="flex-1 flex flex-col min-w-0" onClick={() => setModelDropdownOpen(false)}>
@@ -647,7 +650,7 @@ export default function AppShell() {
           onSelectModel={(model) => void handleSelectModel(model)}
         />
 
-        <ChatMessageList messages={messages} isTyping={isTyping} copiedId={copiedId} onCopy={handleCopy} />
+        <ChatMessageList messages={messages} copiedId={copiedId} onCopy={handleCopy} />
 
         <ChatComposer
           value={inputValue}
@@ -719,6 +722,8 @@ export default function AppShell() {
         onSaveAgentWorkflow={(payload) => handleSaveAgentWorkflow(payload)}
         onDeleteAgentWorkflow={(workflowId) => void handleDeleteAgentWorkflow(workflowId)}
       />
+      <DocsPage open={docsOpen} onClose={() => setDocsOpen(false)} />
+        
     </div>
   );
 }

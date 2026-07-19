@@ -1,4 +1,4 @@
-import { Pencil, Plus, Search, Settings, Sparkles, Trash2, X } from "lucide-react";
+import { BookOpen, Pencil, Plus, Search, Settings, Sparkles, Trash2, X } from "lucide-react";
 
 import type { ApiConversation } from "../lib/api";
 
@@ -12,6 +12,7 @@ export function ChatSidebar({
   onOpenSettings,
   onRenameConversation,
   onDeleteConversation,
+  onOpenDocs
 }: {
   sidebarOpen: boolean;
   conversations: Array<ApiConversation>;
@@ -22,6 +23,7 @@ export function ChatSidebar({
   onOpenSettings: () => void;
   onRenameConversation: (conversation: ApiConversation) => void;
   onDeleteConversation: (conversation: ApiConversation) => void;
+  onOpenDocs: () => void;
 }) {
   const groups = ["Today", "Yesterday", "Earlier"].map((label) => ({
     label,
@@ -132,6 +134,14 @@ export function ChatSidebar({
       </div>
 
       <div className="p-3 border-t border-border shrink-0">
+        <button
+          onClick={onOpenDocs}
+          className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-muted-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent text-xs transition-colors"
+        >
+          <BookOpen className="w-4 h-4 shrink-0" />
+          <span className="whitespace-nowrap">Documentation</span>
+        </button>
+
         <button
           onClick={onOpenSettings}
           className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-muted-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent text-xs transition-colors"
