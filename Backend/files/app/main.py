@@ -16,6 +16,8 @@ from .ollama_client import OllamaError
 from .routers import chat, conversations, models, mcp_servers, presets
 from .routers import chat, conversations, models, mcp_servers, presets, embeddings
 from .routers import chat, conversations, models, mcp_servers, presets, embeddings, agent_workflows
+from pathlib import Path
+from fastapi.staticfiles import StaticFiles
 
 
 
@@ -43,6 +45,13 @@ app.include_router(conversations.router)
 app.include_router(chat.router)
 app.include_router(embeddings.router)
 app.include_router(agent_workflows.router)
+
+FRONTEND_DIST = Path(__file__).resolve().parent.parent / "frontend_dist"
+if FRONTEND_DIST.exists():
+    app.mount("/", StaticFiles(directory=FRONTEND_DIST, html=True), name="frontend")
+
+
+
 
 
 @app.exception_handler(OllamaError)

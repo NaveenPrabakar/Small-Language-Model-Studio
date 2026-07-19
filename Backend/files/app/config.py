@@ -9,10 +9,25 @@ from functools import lru_cache
 from typing import List
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import Field
+import os
+import sys
+from pathlib import Path
+
+
+
+
+def _default_database_url() -> str:
+    if getattr(sys, "frozen", False):  # running as a PyInstaller exe
+        data_dir = Path(os.environ["APPDATA"]) / "SLMStudio"
+        data_dir.mkdir(parents=True, exist_ok=True)
+        return f"sqlite+aiosqlite:///{data_dir / 'app.db'}"
+    return "sqlite+aiosqlite:///./data/app.db"
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    database_url: str = Field(default_factory=_default_database_url)
 
     ollama_host: str = "http://localhost:11434"
     database_url: str = "sqlite+aiosqlite:///./data/app.db"
