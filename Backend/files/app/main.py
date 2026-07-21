@@ -18,6 +18,14 @@ from .routers import chat, conversations, models, mcp_servers, presets, embeddin
 from .routers import chat, conversations, models, mcp_servers, presets, embeddings, agent_workflows
 from pathlib import Path
 from fastapi.staticfiles import StaticFiles
+import logging
+
+
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+)
 
 
 

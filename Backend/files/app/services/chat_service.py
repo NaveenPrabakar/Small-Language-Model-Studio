@@ -3,12 +3,15 @@ from __future__ import annotations
 import json
 import re
 from typing import AsyncIterator
+import logging
 
 from ..config import get_settings
 from ..database import session_scope
 from ..models import MessageRole
 from ..ollama_client import OllamaClient, OllamaError
 from . import agent_workflow_service, conversation_service, embedding_service, mcp_service, preset_service
+
+logger = logging.getLogger(__name__)
 
 MAX_TOOL_ROUNDS = 3
 
@@ -43,6 +46,14 @@ def _strip_code_fences(text: str) -> str:
 
 def _tool_request_from_text(text: str) -> list[dict] | None:
     candidate = _strip_code_fences(text)
+    start = candidate.find("{")
+    end = candidate.rfind("}")
+
+    if start == -1 or end == -1 or end < start:
+        return None
+    
+    candidate = candidate[start : end + 1]
+    
     try:
         data = json.loads(candidate)
     except json.JSONDecodeError:
@@ -191,8 +202,26 @@ async def _discover_tools(servers: list[mcp_service.McpServer]) -> list[mcp_serv
     discovered: list[mcp_service.DiscoveredTool] = []
     for server in servers:
         try:
-            discovered.extend(await mcp_service.list_server_tools(server))
-        except Exception:
+            server_tools = await mcp_service.list_server_tools(server)
+            discovered.extend(server_tools)
+            logger.info(
+                "Discovered %d MCP tool(s) from '%s': %s",
+                len(server_tools),
+                server.name,
+                [t.name for t in server_tools],
+            )
+            
+        except Exception as exc:
+            detail = str(exc)
+            sub_exceptions = getattr(exc, "exceptions", None)
+            if sub_exceptions:
+                detail = "; ".join(f"{type(e).__name__}: {e}" for e in sub_exceptions)
+            logger.warning(
+                "MCP tool discovery failed for server '%s' (%s): %s",
+                server.name,
+                server.url,
+                detail,
+            )
             continue
     return discovered
 
@@ -306,16 +335,23 @@ async def stream_chat_turn(
 
             tool_catalog = _format_tool_catalog(discovered_tools)
             tool_prompt = (
-                "You can use MCP tools when they help answer the user.\n"
+                "You have access to MCP tools that can perform real actions. When the user's "
+                "request can be fulfilled by one of these tools, you MUST call it — do not "
+                "describe what the tool would do, do not ask the user for confirmation, and "
+                "do not simulate the result yourself.\n\n"
                 "Available tools:\n"
                 f"{tool_catalog}\n\n"
-                "If a tool is needed, reply with JSON only in this exact shape:\n"
-                '{"tool_calls":[{"server_id":"...","tool":"...","arguments":{}}]}\n'
-                "If no tool is needed, answer normally."
+                "If a tool call is appropriate, reply with JSON only, in this exact shape, "
+                "with no other text before or after it:\n"
+                '{"tool_calls":[{"server_id":"...","tool":"...","arguments":{}}]}\n\n'
+                "Only skip the tool call if none of the available tools are relevant to the "
+                "user's request at all."
             )
             selector_messages = [{"role": "system", "content": tool_prompt}, *base_messages]
 
+            executed_calls: set[tuple[str, str, str]] = set()
             final_messages = selector_messages
+
             for _ in range(MAX_TOOL_ROUNDS):
                 proposal = await ollama.chat_once(model, final_messages)
                 tool_calls = _tool_request_from_text(proposal)
@@ -323,8 +359,31 @@ async def stream_chat_turn(
                     final_messages = base_messages
                     break
 
+                new_calls = [
+                    call
+                    for call in tool_calls
+                    if (call["server_id"], call["tool"], json.dumps(call["arguments"], sort_keys=True))
+                    not in executed_calls
+                ]
+
+                if not new_calls:
+                    # Model just repeated a call it already made — force it to answer now.
+                    final_messages = [
+                        *final_messages,
+                        {"role": "assistant", "content": proposal},
+                        {
+                            "role": "system",
+                            "content": (
+                                "You already called that tool and have its result above. "
+                                "Respond to the user now in plain, natural language only. "
+                                "Do NOT call any tools and do NOT output JSON."
+                            ),
+                        },
+                    ]
+                    break
+
                 results: list[dict] = []
-                for call in tool_calls:
+                for call in new_calls:
                     server = next((item for item in servers if item.id == call["server_id"]), None)
                     if server is None:
                         continue
@@ -339,18 +398,35 @@ async def stream_chat_turn(
                             "result": result,
                         }
                     )
+                    executed_calls.add(
+                        (call["server_id"], call["tool"], json.dumps(call["arguments"], sort_keys=True))
+                    )
 
                 if not results:
                     final_messages = base_messages
                     break
 
                 final_messages = [
-                    *selector_messages,
+                    *final_messages,
                     {"role": "assistant", "content": proposal},
                     *_assistant_result_messages(results),
                     {
                         "role": "system",
-                        "content": "Use the MCP results above to answer the user's question. Do not call more tools.",
+                        "content": (
+                            "Tool results are above. If a DIFFERENT tool is genuinely still "
+                            "needed, call it now in the same JSON format. Otherwise respond to "
+                            "the user now in plain, natural language only — do not repeat a "
+                            "tool call you already made."
+                        ),
+                    },
+                ]
+            else:
+                # Ran out of rounds without the model settling on a final answer.
+                final_messages = [
+                    *final_messages,
+                    {
+                        "role": "system",
+                        "content": "Respond to the user now in plain, natural language only. Do NOT call any more tools.",
                     },
                 ]
 
